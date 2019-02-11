@@ -2,11 +2,17 @@
 #### Powerful Python3 Powered Smtp Relay Powered Email Spoofer
 
 <p> Send or Spoof Emails via an SMTP Relay </p>
+<p> Setup (unix): </p>
+    
+        pip3 install -r requirements.txt
+        
 <p>Example Usage - Spoof an email from fraud@paypal.com, set reply-to headers to an account you control, specify -i for interactive composition of email (with automatic HTML encoding), or -e msg.htm to send a static file with an attechment.</p>
 
     $ python3 SendMaill.py -s smtp.pwned.com -p 25 -u pwneduser -p terriblepassword -t victom@gmail.com 
     -f fraud@paypal.com -n 'Paypal Fraud Department'  -r your@email.address.com -j 'Notice of Audit' 
     --important --track -d uuid_database.sqlite --attach some_attachment.doc [[ -e message.html || -i ]]
+
+<p> Full Usage: </p>
 
 <pre>
 $ ./SendMail.py -h
