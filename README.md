@@ -1,7 +1,7 @@
 # SmtpRelaySpoof
 <p> Send or Spoof Emails via an SMTP Relay </p>
 
-Powerful Python3 Powered Smtp Relay Powered Emai Spoofer
+Powerful Python3 Powered Smtp Relay Powered Email Spoofer
 <pre>
 $ ./SendMail.py -h
 usage: SendMail.py [-h] [-t TO_ADDRESS] [-a TO_ADDRESS_FILENAME]
