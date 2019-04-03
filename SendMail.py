@@ -21,7 +21,8 @@ from email import encoders
 
 from colorama import Fore, Back, Style
 from colorama import init as color_init
-#from prettyoutput import *
+
+# from prettyoutput import *
 
 global db
 
@@ -45,9 +46,12 @@ def get_args():
                                help="Send as a priority email")
     email_options.add_argument("-i", "--interactive", action="store_true", dest="interactive_email",
                                help="Input email in interactive mode")
-    email_options.add_argument("-F", "--force", action="store_true", dest="force", help="Force send even if fails spoofcheck")
+    email_options.add_argument("-F", "--force", action="store_true", dest="force",
+                               help="Force send even if fails spoofcheck")
     email_options.add_argument("--image", action="store", dest="image", help="Attach an image")
     email_options.add_argument("--attach", action="store", dest="attachment_filename", help="Attach a file")
+    email_options.add_argument("-y", "--yes", action="store_true", dest='yes_send', help='Do not ask for confirmation'
+                                                                                         'when sending message.')
 
     tracking_options = parser.add_argument_group("Email Tracking Options")
     tracking_options.add_argument("--track", dest="track", action="store_true", default=False,
@@ -60,31 +64,43 @@ def get_args():
     smtp_options.add_argument("-p", "--port", dest="smtp_port", type=int, help="SMTP server port (default 25)",
                               default=25)
     smtp_options.add_argument("--slow", action="store_true", dest="slow_send", default=False, help="Slow the sending")
-    smtp_options.add_argument("-u", "--user", dest="smtp_user", default=0, type=str, help="Optional: Authenticate with this username")
-    smtp_options.add_argument("-P","--password", dest="smtp_pass", default=0, type=str, help="Optional: Authenticate with this password")
+    smtp_options.add_argument("-u", "--user", dest="smtp_user", default=0, type=str,
+                              help="Optional: Authenticate with this username")
+    smtp_options.add_argument("-P", "--password", dest="smtp_pass", default=0, type=str,
+                              help="Optional: Authenticate with this password")
+    smtp_options.add_argument("-T", "--tls", dest='tls', action='store_true', help='Authenticate with TLS')
 
     return parser.parse_args()
+
 
 """
 Colorama Functions
 """
+
+
 def output_ok(line):
     print(Fore.LIGHTRED_EX + Style.NORMAL + "[+]" + Style.RESET_ALL, line)
+
 
 def output_good(line):
     print(Fore.GREEN + Style.BRIGHT + "[+]" + Style.RESET_ALL, line)
 
+
 def output_indifferent(line):
     print(Fore.BLUE + Style.BRIGHT + "[*]" + Style.RESET_ALL, line)
+
 
 def output_error(line):
     print(Fore.RED + Style.BRIGHT + "[-] !!! " + Style.NORMAL, line, Style.BRIGHT + "!!!" + Style.RESET_ALL)
 
+
 def output_bad(line):
     print(Fore.RED + Style.BRIGHT + "[-]" + Style.RESET_ALL, line)
 
+
 def output_info(line):
     print(Fore.LIGHTBLUE_EX + Style.NORMAL + "[*]" + Style.RESET_ALL, line)
+
 
 def get_ack(force):
     output_info("To continue: [yes/no]")
@@ -133,15 +149,15 @@ def get_interactive_email():
 
     message = data_input()
     with open(outfile, 'w+') as f:
-        f.write(str("<!DOCTYPE html>\n<html>\n<head>\n<title>\n")+str(subject)+str('\n</title>\n</head>\n<body>\n'))
+        f.write(str("<!DOCTYPE html>\n<html>\n<head>\n<title>\n") + str(subject) + str('\n</title>\n</head>\n<body>\n'))
         for line in message:
-            f.write('<p>'+str(line)+'</p>')
+            f.write('<p>' + str(line) + '</p>')
 
         do_sig = input('Include a signature? Formatted italized, Navy Blue (y/n) :')
         if do_sig == 'y' and do_sig is not None:
             signature = data_input()
             for line in signature:
-                f.write('<i style="color:Navy;">'+str(line)+'</i><br>\n')
+                f.write('<i style="color:Navy;">' + str(line) + '</i><br>\n')
         f.write('<br></body>\n</html>\n')
     with open(outfile, 'r') as ff:
         msg = ff.read()
@@ -223,7 +239,7 @@ def inject_name(email_text, name):
 
 
 def delay_send():
-    sleep_time = random.randint(1, 55) + (60*5)
+    sleep_time = random.randint(1, 55) + (60 * 5)
     time.sleep(sleep_time)
 
 
@@ -232,9 +248,9 @@ if __name__ == "__main__":
 
     args = get_args()
     if args.smtp_user and args.smtp_pass:
-        use_auth=True
+        use_auth = True
     else:
-        use_auth=False
+        use_auth = False
 
     global db
     if args.track:
@@ -268,7 +284,7 @@ if __name__ == "__main__":
     else:
         logging.error("Could not load input file names")
         exit(1)
-    if not args.to_address_filename:
+    if not args.to_address_filename or not args.yes_send:
         output_indifferent('[?] Send message? (y/n) : ')
         proceed = input('[>] ')
         if proceed == 'y' or proceed == 'Y' or proceed == 'yes':
@@ -279,6 +295,9 @@ if __name__ == "__main__":
     try:
         output_info("Connecting to SMTP server at " + args.smtp_server + ":" + str(args.smtp_port))
         server = smtplib.SMTP(args.smtp_server, args.smtp_port)
+        if args.tls:
+            output_info("Using TLS ...")
+            server.starttls()
         if use_auth:
             output_indifferent('Attempting Authentication...')
             try:
@@ -313,7 +332,7 @@ if __name__ == "__main__":
                 msg.attach(img)
 
         for to_address in to_addresses:
-            is_domain_spoofable(args.from_address,to_address)
+            is_domain_spoofable(args.from_address, to_address)
             msg["To"] = to_address
 
             if args.track:
