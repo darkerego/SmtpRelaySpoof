@@ -2,6 +2,9 @@
 #### Powerful Python3 Powered Smtp Relay Powered Email Spoofer
 
 <p> Send or Spoof Emails via an SMTP Relay </p>
+<p> <b>New Features:</b></p>
+<p> - Enhanced spoofcheck - check sending domain's SPF and DMARC records before sending </p>
+<p> - SOCKS5 Proxy Support - Relay smtp traffic through a socks5 proxy</p>
 <p> Setup (unix): </p>
     
         pip3 install -r requirements.txt
@@ -15,13 +18,13 @@
 <p> Full Usage: </p>
 
 <pre>
-$ ./SendMail.py -h
+$ ./SendMail.py  -h
 usage: SendMail.py [-h] [-t TO_ADDRESS] [-a TO_ADDRESS_FILENAME]
                    [-f FROM_ADDRESS] [-n FROM_NAME] [-r REPLY_TO] [-j SUBJECT]
                    [-e EMAIL_FILENAME] [--important] [-i] [-F] [--image IMAGE]
-                   [--attach ATTACHMENT_FILENAME] [--track] [-d DB_NAME]
+                   [--attach ATTACHMENT_FILENAME] [-y] [--track] [-d DB_NAME]
                    [-s SMTP_SERVER] [-p SMTP_PORT] [--slow] [-u SMTP_USER]
-                   [-P SMTP_PASS]
+                   [-P SMTP_PASS] [-T] [--proxy SOCKS_PROXY]
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -47,6 +50,7 @@ Email Options:
   --image IMAGE         Attach an image
   --attach ATTACHMENT_FILENAME
                         Attach a file
+  -y, --yes             Do not ask for confirmationwhen sending message.
 
 Email Tracking Options:
   --track               Track email links with GUIDs
@@ -63,4 +67,7 @@ SMTP options:
                         Optional: Authenticate with this username
   -P SMTP_PASS, --password SMTP_PASS
                         Optional: Authenticate with this password
+  -T, --tls             Authenticate with TLS
+  --proxy SOCKS_PROXY   Socks5 proxy <ex: localhost:9050>
+
 </pre>

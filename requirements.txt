@@ -3,3 +3,4 @@ sqlite3
 mimetypes
 email
 colorama
+emailprotectionslib
