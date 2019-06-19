@@ -1,274 +1,69 @@
 #!/usr/bin/env python3.6
+# -*- coding: utf-8 -*-
+# https://github.com/darkerego/SmtpRelaySpoof
 # Modified by Darkerego, 2019
 # xelectron@protonmail.com
 # Tips: BTC:17hcGfgvvTz2wB1wx17GHyWpt8BsLuu5PX
+#
 
-import re
-import smtplib
+# imports
 import argparse
 import logging
-import sqlite3
-import socks
-import uuid
-import time
-import random
-from sys import exit
 import mimetypes
+import random
+import re
+import smtplib
+import sqlite3
+import time
+import uuid
+from email import encoders
+from email.mime.base import MIMEBase
+from email.mime.image import MIMEImage
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from email.mime.image import MIMEImage
-from email.mime.base import MIMEBase
-import emailprotectionslib.dmarc as dmarclib
-import emailprotectionslib.spf as spflib
-from email import encoders
-from colorama import Fore, Back, Style
-from colorama import init as color_init
-
-# from prettyoutput import *
-
+from sys import exit
+from os import mkdir
+from time import strftime
+import socks
+# local imports (from ./lib)
+from lib.prettyoutput import *
+from lib import spoofcheck
+# some globals
 global db
-
-
-def get_args():
-
-    return
-
-
-def spoofchecker(domain):
-    logging.basicConfig(level=logging.INFO)
-
-    def check_spf_redirect_mechanisms(spf_record):
-        redirect_domain = spf_record.get_redirect_domain()
-
-        if redirect_domain is not None:
-            output_info("Processing an SPF redirect domain: %s" % redirect_domain)
-
-            return is_spf_record_strong(redirect_domain)
-
-        else:
-            return False
-
-    def check_spf_include_mechanisms(spf_record):
-        include_domain_list = spf_record.get_include_domains()
-
-        for include_domain in include_domain_list:
-            output_info("Processing an SPF include domain: %s" % include_domain)
-
-            strong_all_string = is_spf_record_strong(include_domain)
-
-            if strong_all_string:
-                return True
-
-        return False
-
-    def is_spf_redirect_record_strong(spf_record):
-        output_info("Checking SPF redirect domian: %(domain)s" % {"domain": spf_record.get_redirect_domain})
-        redirect_strong = spf_record._is_redirect_mechanism_strong()
-        if redirect_strong:
-            output_bad("Redirect mechanism is strong.")
-        else:
-            output_indifferent("Redirect mechanism is not strong.")
-
-        return redirect_strong
-
-    def are_spf_include_mechanisms_strong(spf_record):
-        output_info("Checking SPF include mechanisms")
-        include_strong = spf_record._are_include_mechanisms_strong()
-        if include_strong:
-            output_bad("Include mechanisms include a strong record")
-        else:
-            output_indifferent("Include mechanisms are not strong")
-
-        return include_strong
-
-    def check_spf_include_redirect(spf_record):
-        other_records_strong = False
-        if spf_record.get_redirect_domain() is not None:
-            other_records_strong = is_spf_redirect_record_strong(spf_record)
-
-        if not other_records_strong:
-            other_records_strong = are_spf_include_mechanisms_strong(spf_record)
-
-        return other_records_strong
-
-    def check_spf_all_string(spf_record):
-        strong_spf_all_string = True
-        if spf_record.all_string is not None:
-            if spf_record.all_string == "~all" or spf_record.all_string == "-all":
-                output_indifferent("SPF record contains an All item: " + spf_record.all_string)
-            else:
-                output_good("SPF record All item is too weak: " + spf_record.all_string)
-                strong_spf_all_string = False
-        else:
-            output_good("SPF record has no All string")
-            strong_spf_all_string = False
-
-        if not strong_spf_all_string:
-            strong_spf_all_string = check_spf_include_redirect(spf_record)
-
-        return strong_spf_all_string
-
-    def is_spf_record_strong(domain):
-        strong_spf_record = True
-        spf_record = spflib.SpfRecord.from_domain(domain)
-        if spf_record is not None and spf_record.record is not None:
-            output_info("Found SPF record:")
-            output_info(str(spf_record.record))
-
-            strong_all_string = check_spf_all_string(spf_record)
-            if strong_all_string is False:
-
-                redirect_strength = check_spf_redirect_mechanisms(spf_record)
-                include_strength = check_spf_include_mechanisms(spf_record)
-
-                strong_spf_record = False
-
-                if redirect_strength is True:
-                    strong_spf_record = True
-
-                if include_strength is True:
-                    strong_spf_record = True
-        else:
-            output_good(domain + " has no SPF record!")
-            strong_spf_record = False
-
-        return strong_spf_record
-
-    def get_dmarc_record(domain):
-        dmarc = dmarclib.DmarcRecord.from_domain(domain)
-        if dmarc is not None and dmarc.record is not None:
-            output_info("Found DMARC record:")
-            output_info(str(dmarc.record))
-        return dmarc
-
-    def get_dmarc_org_record(base_record):
-        org_record = base_record.get_org_record()
-        if org_record is not None:
-            output_info("Found DMARC Organizational record:")
-            output_info(str(org_record.record))
-        return org_record
-
-    def check_dmarc_extras(dmarc_record):
-        if dmarc_record.pct is not None and dmarc_record.pct != str(100):
-            output_indifferent("DMARC pct is set to " + dmarc_record.pct + "% - might be possible")
-
-        if dmarc_record.rua is not None:
-            output_indifferent("Aggregate reports will be sent: " + dmarc_record.rua)
-
-        if dmarc_record.ruf is not None:
-            output_indifferent("Forensics reports will be sent: " + dmarc_record.ruf)
-
-    def check_dmarc_policy(dmarc_record):
-        policy_strength = False
-        if dmarc_record.policy is not None:
-            if dmarc_record.policy == "reject" or dmarc_record.policy == "quarantine":
-                policy_strength = True
-                output_bad("DMARC policy set to " + dmarc_record.policy)
-            else:
-                output_good("DMARC policy set to " + dmarc_record.policy)
-        else:
-            output_good("DMARC record has no Policy")
-
-        return policy_strength
-
-    def check_dmarc_org_policy(base_record):
-        policy_strong = False
-
-        try:
-            org_record = base_record.get_org_record()
-            if org_record is not None and org_record.record is not None:
-                output_info("Found organizational DMARC record:")
-                output_info(str(org_record.record))
-
-                if org_record.subdomain_policy is not None:
-                    if org_record.subdomain_policy == "none":
-                        output_good(
-                            "Organizational subdomain policy set to %(sp)s" % {"sp": org_record.subdomain_policy})
-                    elif org_record.subdomain_policy == "quarantine" or org_record.subdomain_policy == "reject":
-                        output_bad("Organizational subdomain policy explicitly set to %(sp)s" % {
-                            "sp": org_record.subdomain_policy})
-                        policy_strong = True
-                else:
-                    output_info("No explicit organizational subdomain policy. Defaulting to organizational policy")
-                    policy_strong = check_dmarc_policy(org_record)
-            else:
-                output_good("No organizational DMARC record")
-
-        except dmarclib.OrgDomainException:
-            output_good("No organizational DMARC record")
-
-        except Exception as e:
-            logging.exception(e)
-
-        return policy_strong
-
-    def is_dmarc_record_strong(domain):
-        dmarc_record_strong = False
-
-        dmarc = get_dmarc_record(domain)
-
-        if dmarc is not None and dmarc.record is not None:
-            dmarc_record_strong = check_dmarc_policy(dmarc)
-
-            check_dmarc_extras(dmarc)
-        elif dmarc.get_org_domain() is not None:
-            output_info("No DMARC record found. Looking for organizational record")
-            dmarc_record_strong = check_dmarc_org_policy(dmarc)
-        else:
-            output_good(domain + " has no DMARC record!")
-
-        return dmarc_record_strong
-
-
-    def check_domain(domain):
-
-            spf_record_strength = is_spf_record_strong(domain)
-
-            dmarc_record_strength = is_dmarc_record_strong(domain)
-            if dmarc_record_strength is False:
-                spoofable = True
-            else:
-                spoofable = False
-
-            if spoofable:
-                output_good("Spoofing possible for " + domain + "!")
-                return True
-            else:
-
-                output_bad("Spoofing not possible for " + domain)
-                return False
-    ret = check_domain(domain)
-    return ret
-"""
-Colorama Functions
-"""
-
-
-def output_ok(line):
-    print(Fore.LIGHTRED_EX + Style.NORMAL + "[+]" + Style.RESET_ALL, line)
-
-
-def output_good(line):
-    print(Fore.GREEN + Style.BRIGHT + "[+]" + Style.RESET_ALL, line)
-
-
-def output_indifferent(line):
-    print(Fore.BLUE + Style.BRIGHT + "[*]" + Style.RESET_ALL, line)
-
-
-def output_error(line):
-    print(Fore.RED + Style.BRIGHT + "[-] !!! " + Style.NORMAL, line, Style.BRIGHT + "!!!" + Style.RESET_ALL)
-
-
-def output_bad(line):
-    print(Fore.RED + Style.BRIGHT + "[-]" + Style.RESET_ALL, line)
-
-
-def output_info(line):
-    print(Fore.LIGHTBLUE_EX + Style.NORMAL + "[*]" + Style.RESET_ALL, line)
+msgdir = './messages'
+
+# Create message store directory
+try:
+    mkdir(msgdir)
+except FileExistsError:
+    pass
+
+
+def time_stamp():
+    """\
+    Generate a timestamp
+    :return: time string: example: 2019-06-19-14-14-49
+    """
+    ts = strftime("%Y-%m-%d-%H-%M-%S")
+    ts = str(ts)
+    return ts
+
+
+"""def check_domain(domain):
+    
+    spoofable = check(domain)
+    if spoofable:
+        return True
+    else:
+        return False"""
 
 
 def get_ack(force):
+    """\
+    Force function - Send even if Spoof Check fails
+    :param force: specified on CLI
+    :return: true or false
+    """
     output_info("To continue: [yes/no]")
     if force is False:
         yn = input('[>] ')
@@ -284,7 +79,12 @@ def get_ack(force):
 
 
 def get_interactive_email():
-    outfile = 'tmp.html'
+    """\
+    My function for interactively taking input and parsing it into a valid
+    HTML/EML document
+    :return:
+    """
+    outfile = msgdir + '/' + 'tmp.html'
     subject = args.subject
 
     output_ok("""Enter each line as a paragraph. Lines will be wrapped in <p>line</p> tags. To remove the previous line,
@@ -324,13 +124,18 @@ def get_interactive_email():
             signature = data_input()
             for line in signature:
                 f.write('<i style="color:Navy;">' + str(line) + '</i><br>\n')
-        f.write('<br></body>\n</html>\n')
+        f.write('<br><!-- Powered by Darkeregos awesome smtp tool. '
+                'https://github.com/darkerego/SmtpRelaySpoof --></body>\n</html>\n')
     with open(outfile, 'r') as ff:
         msg = ff.read()
         return msg
 
 
 def get_file_email():
+    """\
+    Open a file and parse to send
+    :return: email text
+    """
     email_text = ""
     try:
         with open(args.email_filename, "r") as infile:
@@ -344,19 +149,40 @@ def get_file_email():
 
 
 def is_domain_spoofable(from_address, to_address):
+    global force
+    """\
+    Enhanced DMARC, SPF, and Cross Orgin Checks
+    :param from_address: sending from
+    :param to_address: sending to
+    :return: - exit if check fails
+    """
     email_re = re.compile(".*@(.*\...*)")
 
     from_domain = email_re.match(from_address).group(1)
     to_domain = email_re.match(to_address).group(1)
-    output_info("Checking if from domain " + Style.BRIGHT + from_domain + Style.NORMAL + " is spoofable")
-    if spoofchecker(from_domain):
-        output_good('SPF and DMARC records weak, looking good!')
+    output_info("Checking if from domain " + Style.BRIGHT + from_domain + Style.NORMAL + " is spoofable...")
+    if spoofcheck.check(from_domain):  # check actual dmarc and spf records
+        output_good('Sending domain: SPF and DMARC records weak, looking good!')
+        send_ok = True
+        """\
+        Do we need to check both?
+        output_info("Checking if to domain " + Style.BRIGHT + to_domain + Style.NORMAL + " is spoofable...")
+        if spoofcheck.check(to_domain):
+            output_good('Rcpt domain: SPF and DMARC records weak, looking great! ')
+            send_ok = True
+        else:
+            output_bad('Domain has spoof protection, this might not be a good idea...')
+            send_ok = False"""
     else:
         output_bad('Domain has spoof protection, this might not be a good idea...')
-        proceed = input('Proceed anyway ? (y/n) :' )
-        if proceed != 'y':
-            output_bad('Exiting...')
-            exit(0)
+        send_ok = False
+        if not send_ok or force:
+            proceed = input('Proceed anyway ? (y/n) :' )
+            if proceed != 'y':
+                output_bad('Exiting...')
+                exit(0)
+        else:
+            output_bad('Domain failed spoofcheck, but --force was specfied... ')
 
     if from_domain == "gmail.com":
         if to_domain == "gmail.com":
@@ -430,7 +256,8 @@ def main():
     email_options.add_argument("-n", "--from_name", dest="from_name", help="From name")
     email_options.add_argument("-r", "--reply_to", dest="reply_to", help="Reply-to header")
 
-    email_options.add_argument("-j", "--subject", dest="subject", help="Subject for the email")
+    email_options.add_argument("-j", "--subject", dest="subject", default='Automated Message Service',
+                               help="Subject for the email")
     email_options.add_argument("-e", "--email_filename", dest="email_filename",
                                help="Filename containing an HTML email")
     email_options.add_argument("--important", dest="important", action="store_true", default=False,
@@ -442,7 +269,9 @@ def main():
     email_options.add_argument("--image", action="store", dest="image", help="Attach an image")
     email_options.add_argument("--attach", action="store", dest="attachment_filename", help="Attach a file")
     email_options.add_argument("-y", "--yes", action="store_true", dest='yes_send', help='Do not ask for confirmation'
-                                                                                         'when sending message.')
+                                                                                         'when sending message.'
+                                                                                         'Useful for automated tasks '
+                                                                                         'such as cronjobs.')
 
     tracking_options = parser.add_argument_group("Email Tracking Options")
     tracking_options.add_argument("--track", dest="track", action="store_true", default=False,
@@ -465,8 +294,11 @@ def main():
 
     global db
     args = parser.parse_args()
+    if args.force:
+        globals()['force'] = True
+    if args.yes_send:
+        globals()['yes_send'] = True
 
-    # args = get_args()
     if args.smtp_user and args.smtp_pass:
         use_auth = True
     else:
@@ -512,7 +344,7 @@ def main():
         socks.setdefaultproxy(socks.PROXY_TYPE_SOCKS5, socks_host, socks_port)
         socks.wrapmodule(smtplib)
 
-    if not args.to_address_filename or not args.yes_send:
+    if not args.yes_send and not args.force:
         output_indifferent('[?] Send message? (y/n) : ')
         proceed = input('[>] ')
         if proceed == 'y' or proceed == 'Y' or proceed == 'yes':
@@ -586,15 +418,22 @@ def main():
                 msg.attach(inner)
 
             server.sendmail(args.from_address, to_address, msg.as_string())
+            ts = time_stamp()
+            with open(msgdir + '/msg_' + ts + '.eml', 'w+') as f:
+                eml_msg = msg.as_string()
+                f.write(eml_msg)
             output_info("Email Sent to " + to_address)
             if args.slow_send:
                 delay_send()
                 output_info("Connecting to SMTP server at " + args.smtp_server + ":" + str(args.smtp_port))
                 server = smtplib.SMTP(args.smtp_server, args.smtp_port)
 
-    except smtplib.SMTPException as e:
+    except smtplib.SMTPException as err:
         output_error("Error: Could not send email")
-        raise e
+        output_bad('Server says: ' + str(err))
+        output_indifferent('Exit')
+        # raise err
+        exit(1)
 
 
 if __name__ == "__main__":
