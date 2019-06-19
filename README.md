@@ -3,7 +3,9 @@
 
 <p> Send or Spoof Emails via an SMTP Relay </p>
 <p> <b>New Features:</b></p>
-<p> - Enhanced spoofcheck - check sending domain's SPF and DMARC records before sending </p>
+<p> - Enhanced spoofcheck - check sending domain's SPF and DMARC records before sending 
+   <p> Updated June 19, 2019 </p> </p>
+
 <p> - SOCKS5 Proxy Support - Relay smtp traffic through a socks5 proxy</p>
 <p> Setup (unix): </p>
     
